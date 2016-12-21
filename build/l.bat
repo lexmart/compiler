@@ -1,0 +1,1 @@
+link /SUBSYSTEM:CONSOLE /LIBPATH:c\masm32\lib test.obj

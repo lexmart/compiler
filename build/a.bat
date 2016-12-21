@@ -1,0 +1,1 @@
+ml /c /coff /Cp test.asm
