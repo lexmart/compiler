@@ -15,6 +15,6 @@ set ExternalLibraries=
 
 pushd build
 
-cl %CompilerFlags% ../cradle.cpp /link /SUBSYSTEM:CONSOLE
+cl %CompilerFlags% ../interpreter.cpp /link /SUBSYSTEM:CONSOLE
 
 popd
