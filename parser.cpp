@@ -46,6 +46,7 @@ Match(char C)
     if(Look == C)
     {
         GetChar();
+        SkipBlank();
     }
     else
     {
@@ -71,6 +72,22 @@ IsDigit(char C)
 }
 
 static bool
+IsAlphaNumeric(char C)
+{
+    bool Result = (IsAlpha(C) || IsDigit(C));
+    
+    return Result;
+}
+
+static bool
+IsBlank(char C)
+{
+    bool Result = ((C == '\t') || (C == ' '));
+    
+    return Result;
+}
+
+static bool
 IsAddop(char C)
 {
     bool Result = ((C == '+') || (C == '-'));
@@ -86,32 +103,53 @@ IsMulop(char C)
     return Result;
 }
 
-static char
-GetName()
+static void
+SkipBlank()
+{
+    while(IsBlank(Look))
+    {
+        GetChar();
+    }
+}
+
+static void
+GetName(char *Token)
 {
     if(!IsAlpha(Look))
     {
         Expected("Name");
     }
     
-    char Result = toupper(Look);
-    GetChar();
+    int InsertIndex = 0;
+    while(IsAlphaNumeric(Look))
+    {
+        Assert(InsertIndex < MaxTokenLength);
+        Token[InsertIndex++] = toupper(Look);
+        GetChar();
+    }
+    Token[InsertIndex] = 0;
     
-    return Result;
+    SkipBlank();
 }
 
-static char
-GetNum()
+static void
+GetNum(char *Token)
 {
     if(!IsDigit(Look))
     {
         Expected("Integer");
     }
     
-    char Result = Look;
-    GetChar();
+    int InsertIndex = 0;
+    while(IsDigit(Look))
+    {
+        Assert(InsertIndex < MaxTokenLength);
+        Token[InsertIndex++] = Look;
+        GetChar();
+    }
+    Token[InsertIndex] = 0;
     
-    return Result;
+    SkipBlank();
 }
 
 static void
@@ -137,6 +175,7 @@ static void
 Init()
 {
     GetChar();
+    SkipBlank();
 }
 
 static void
@@ -182,7 +221,8 @@ EmitInstruction(char *Name, char Param1, char *Param2)
 static void
 Identifier()
 {
-    char Name = GetName();
+    char Name[MaxTokenLength];
+    GetName(Name);
     if(Look == '(')
     {
         Match('(');
@@ -210,7 +250,8 @@ Factor()
     }
     else
     {
-        char Num = GetNum();
+        char Num[MaxTokenLength];
+        GetNum(Num);
         EmitInstruction("MOV", "eax", Num);
     }
 }
@@ -304,7 +345,8 @@ Expression()
 static void
 Assignment()
 {
-    char Name = GetName();
+    char Name[1024];
+    GetName(Name);
     Match('=');
     Expression();
     EmitInstruction("MOV", Name, "eax");

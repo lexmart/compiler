@@ -7,35 +7,14 @@ includelib C:\masm32\lib\kernel32.lib
 include C:\masm32\include\msvcrt.inc
 includelib C:\masm32\lib\msvcrt.lib
 .data
+X DWORD 8
 .code
 start:
-        MOV eax, 0
-        PUSH eax
-        MOV eax, 0
-        PUSH eax
-        MOV eax, 2
-        PUSH eax
-        MOV eax, 2
-        POP ebx
-        MUL ebx
-        POP ebx
-        SUB eax, ebx
-        NEG eax
-        PUSH eax
-        MOV eax, 4
-        POP ebx
-        ADD eax, ebx
-        PUSH eax
-        MOV eax, 3
-        POP ebx
-        SUB eax, ebx
-        NEG eax
+        MOV eax, X
         PUSH eax
         MOV eax, 2
         POP ebx
         ADD eax, ebx
-        POP ebx
-        SUB eax, ebx
-        NEG eax
+        MOV X, eax
         call ExitProcess
 end start
