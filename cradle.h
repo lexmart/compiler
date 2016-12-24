@@ -11,3 +11,5 @@ static void Add();
 static void Subtract();
 static void Expression();
 static void Identifer();
+static void If(char *);
+static void Block(char *);

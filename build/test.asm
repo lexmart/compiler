@@ -10,11 +10,18 @@ includelib C:\masm32\lib\msvcrt.lib
 X DWORD 8
 .code
 start:
-        MOV eax, X
-        PUSH eax
-        MOV eax, 2
-        POP ebx
-        ADD eax, ebx
-        MOV X, eax
-        call ExitProcess
+	mov eax, 6
+	push eax
+l1:
+	mov eax, [esp]
+	sub eax, 1
+	mov [esp], eax
+	mov eax, 0
+	cmp [esp], eax
+	jl l2
+	jmp l1
+l2:
+	add esp, 4
+
+	call ExitProcess
 end start
