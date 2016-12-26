@@ -15,6 +15,6 @@ set ExternalLibraries=
 
 pushd build
 
-cl %CompilerFlags% ../constructs.cpp /link /SUBSYSTEM:CONSOLE
+cl %CompilerFlags% ../lexer_and_parser.cpp /link /SUBSYSTEM:CONSOLE
 
 popd

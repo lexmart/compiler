@@ -39,12 +39,12 @@ GetChar()
 {
     if(Look != EndOfFileChar)
     {
-    Look = getc(stdin);
-    while(Look == '\n')
-    {
-        GetChar();
+        Look = getc(stdin);
+        while(Look == '\n')
+        {
+            GetChar();
+        }
     }
-}
 }
 
 static void
@@ -261,7 +261,7 @@ Scan()
     {
         GetName();
     }
-     else if(IsDigit(Look))
+    else if(IsDigit(Look))
     {
         GetNum();
     }
@@ -369,11 +369,11 @@ main(int NumArguments, char **Arguments)
 {
     Init();
     
-    #if 1
+#if 1
     
     while(strcmp(Value, "|"))
     {
-    Scan();
+        Scan();
         switch(Token)
         {
             case 'x':
@@ -393,19 +393,19 @@ main(int NumArguments, char **Arguments)
             case 'e':
             {
                 printf("Keyword: ", Token);
-    } break;
-    default:
-    {
-        printf("lolwat: ");
+            } break;
+            default:
+            {
+                printf("lolwat: ");
+            }
+        }
+        printf("%s\n", Value);
     }
-}
-printf("%s\n", Value);
-}
-    #endif
+#endif
     
-    #if 0
+#if 0
     char Token[MaxTokenLength];
     Scan(Token);
     printf("%d\n", Lookup(Keywords, Token, ArrayCount(Keywords)));
-    #endif
+#endif
 }

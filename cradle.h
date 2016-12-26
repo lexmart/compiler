@@ -1,6 +1,7 @@
 #define MaxTokenLength 64
 
 #define Assert(Expression) if(!(Expression)) { *((int *)0) = 0; }
+#define ArrayCount(Array) (sizeof(Array)/sizeof((Array)[0]))
 
 static void SkipBlank();
 static void Factor();
