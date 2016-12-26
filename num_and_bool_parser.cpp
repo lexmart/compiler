@@ -279,7 +279,7 @@ Factor()
     if(Look == '(')
     {
         Match('(');
-        BoolExpression();
+        Expression();
         Match(')');
     }
     else if(IsAlpha(Look))
@@ -451,22 +451,22 @@ Relation()
         if(Look == '=')
         {
             Equals();
+        }
+        else if(Look == '#')
+        {
+            NotEquals();
+        }
+        else if(Look == '<')
+        {
+            Less();
+        }
+        else if(Look == '>')
+        {
+            Greater();
+        }
+        
+        EmitInstruction("CMP", "eax", "-1");
     }
-    else if(Look == '#')
-    {
-        NotEquals();
-    }
-    else if(Look == '<')
-    {
-        Less();
-    }
-    else if(Look == '>')
-    {
-        Greater();
-    }
-    
-    EmitInstruction("CMP", "eax", "-1");
-}
 }
 
 static void

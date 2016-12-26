@@ -258,6 +258,16 @@ EmitInstruction(char *Name, char Param1, char *Param2)
 }
 
 static void
+Assignment()
+{
+    // TODO: Maybe this should be: assignement :== <ident> = <expr> | <expr>
+    char Name = GetName();
+    Match('=');
+    BoolExpression();
+    EmitInstruction("MOV", Name, "eax");
+}
+
+static void
 Identifier()
 {
     char Name = GetName();
@@ -396,7 +406,7 @@ Expression()
 static void
 Equals()
 {
-    Match('e');
+    Match('=');
     Expression();
     EmitInstruction("POP", "ebx");
     EmitInstruction("CMP", "eax", "ebx");
@@ -451,22 +461,22 @@ Relation()
         if(Look == '=')
         {
             Equals();
+        }
+        else if(Look == '#')
+        {
+            NotEquals();
+        }
+        else if(Look == '<')
+        {
+            Less();
+        }
+        else if(Look == '>')
+        {
+            Greater();
+        }
+        
+        EmitInstruction("CMP", "eax", "-1");
     }
-    else if(Look == '#')
-    {
-        NotEquals();
-    }
-    else if(Look == '<')
-    {
-        Less();
-    }
-    else if(Look == '>')
-    {
-        Greater();
-    }
-    
-    EmitInstruction("CMP", "eax", "-1");
-}
 }
 
 static void
@@ -559,6 +569,223 @@ BoolExpression()
     }
 }
 
+static void
+If(char *OuterDoneLabel)
+{
+    Match('i');
+    BoolExpression();
+    
+    char FalseLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    
+    NewLabel(FalseLabel);
+    strcpy(DoneLabel, FalseLabel);
+    
+    // NOTE: If ZF = 0 (ie the condition was not met), then jump to FalseLabel
+    EmitInstruction("JNE", FalseLabel);
+    Block(OuterDoneLabel);
+    
+    if(Look == 'l')
+    {
+        Match('l');
+        
+        NewLabel(DoneLabel);
+        EmitInstruction("JMP", DoneLabel);
+        
+        PostLabel(FalseLabel);
+        Block(OuterDoneLabel);
+    }
+    
+    Match('e');
+    PostLabel(DoneLabel);
+}
+
+static void
+While()
+{
+    Match('w');
+    char ConditionLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    NewLabel(ConditionLabel);
+    NewLabel(DoneLabel);
+    
+    PostLabel(ConditionLabel);
+    BoolExpression();
+    EmitInstruction("JNE", DoneLabel);
+    Block(DoneLabel);
+    Match('e');
+    EmitInstruction("JMP", ConditionLabel);
+    PostLabel(DoneLabel);
+}
+
+// NOTE: LOOP <block ENDLOOP
+static void
+Loop()
+{
+    Match('p');
+    char TopLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    NewLabel(TopLabel);
+    NewLabel(DoneLabel);
+    PostLabel(TopLabel);
+    Block(DoneLabel);
+    Match('e');
+    EmitInstruction("JMP", TopLabel);
+    PostLabel(DoneLabel);
+}
+
+// NOTE: REPEAT <block> UNTIL <condition>
+static void
+RepeatUntil()
+{
+    Match('r');
+    char TopLabel[MaxTokenLength];
+    NewLabel(TopLabel);
+    PostLabel(TopLabel);
+    Block(0);
+    Match('u');
+    BoolExpression();
+    EmitInstruction("JNE", TopLabel);
+}
+
+// NOTE: FOR <ident> = <expr1> TO <expr2> <block> ENDFOR
+static void
+For()
+{
+    Match('f');
+    
+    char LoopLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    NewLabel(LoopLabel);
+    NewLabel(DoneLabel);
+    
+    char Name[MaxTokenLength];
+    GetNameWithBrackets(Name);
+    Match('=');
+    Expression();
+    
+    EmitInstruction("MOV", Name, "eax");
+    EmitInstruction("SUB", Name, "1");
+    
+    Match('t');
+    Expression();
+    EmitInstruction("PUSH", "eax");
+    
+    PostLabel(LoopLabel);
+    EmitInstruction("ADD", Name, "1");
+    EmitInstruction("MOV", "eax", Name);
+    EmitInstruction("CMP", "eax", "[esp]");
+    EmitInstruction("JG", DoneLabel);
+    Block(0);
+    EmitInstruction("JMP", LoopLabel);
+    Match('e');
+    
+    PostLabel(DoneLabel);
+    EmitInstruction("ADD", "esp", "4");
+}
+
+// NOTE: DO <expression> <block> ENDDO
+static void
+Do()
+{
+    Match('d');
+    
+    char LoopLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    NewLabel(LoopLabel);
+    NewLabel(DoneLabel);
+    
+    Expression();
+    EmitInstruction("PUSH", "eax");
+    
+    PostLabel(LoopLabel);
+    EmitInstruction("MOV", "eax", "[esp]");
+    EmitInstruction("SUB", "eax", "1");
+    EmitInstruction("MOV", "[esp]", "eax");
+    
+    Block(DoneLabel);
+    
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("CMP", "[esp]", "eax");
+    EmitInstruction("JGE", LoopLabel);
+    
+    PostLabel(DoneLabel);
+    EmitInstruction("ADD", "esp", "4");
+    Match('e');
+}
+
+static void
+Break(char *DoneLabel)
+{
+    Match('b');
+    
+    if(DoneLabel)
+    {
+        EmitInstruction("JMP", DoneLabel);
+    }
+    else
+    {
+        Abort("No loop to break from");
+    }
+}
+
+static void
+Block(char *DoneLabel)
+{
+    // TODO: push ebp
+    // TODO: mov ebp, esp
+    
+    while((Look != 'e') && (Look != 'l') && (Look != 'u'))
+    {
+        if(Look == 'i')
+        {
+            If(DoneLabel);
+        }
+        else if(Look == 'w')
+        {
+            While();
+        }
+        else if(Look == 'p')
+        {
+            Loop();
+        }
+        else if(Look == 'r')
+        {
+            RepeatUntil();
+        }
+        else if(Look == 'f')
+        {
+            For();
+        }
+        else if(Look == 'd')
+        {
+            Do();
+        }
+        else if(Look == 'b')
+        {
+            Break(DoneLabel);
+        }
+        else
+        {
+            Assignment();
+        }
+    }
+    
+    // TODO: mov esp, ebp
+    // TODO: pop ebp
+}
+
+static void
+Program()
+{
+    Block(0);
+    if(Look != 'e')
+    {
+        Expected("End");
+    }
+    EmitLn("call ExitProcess");
+}
+
 void
 main(int NumArguments, char **Arguments)
 {
@@ -575,11 +802,7 @@ main(int NumArguments, char **Arguments)
     EmitNoTab("start:");
     
     Init();
-    BoolExpression();
-    if(Look != 'e')
-    {
-        Expected("END");
-    }
+    Program();
     
     EmitInstruction("end", "start");
 }
