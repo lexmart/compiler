@@ -1,1 +1,1 @@
-link /SUBSYSTEM:CONSOLE /LIBPATH:c\masm32\lib test.obj
+link /SUBSYSTEM:CONSOLE /LIBPATH:c\masm32\lib %1

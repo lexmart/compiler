@@ -1,5 +1,3 @@
-// NOTE: The cradle is where things grow up.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -778,7 +776,7 @@ int main(int NumArguments, char **Arguments)
         *OutputFileChar++ = 'm';
         *OutputFileChar++ = 0;
         
-    OutputFileHandle = fopen(OutputFileName, "w");
+        OutputFileHandle = fopen(OutputFileName, "w");
     }
     
     Init();

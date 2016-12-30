@@ -1,1 +1,1 @@
-ml /c /coff /Cp test.asm
+ml /c /coff /Cp %1
