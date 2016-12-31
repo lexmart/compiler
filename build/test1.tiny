@@ -1,0 +1,9 @@
+PROGRAM
+VAR X = 2
+VAR Z = 7
+BEGIN
+WHILE X < Z
+X = X + 1
+ENDWHILE
+Z = X + 5
+END

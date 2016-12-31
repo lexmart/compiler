@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <string.h>
 
 // TINY Language definition:
 // <program> ::= PROGRAM <top-level decls> <main> '.'
@@ -9,18 +10,40 @@
 // <data declaration> ::= VAR <var-list>
 // <var-list> ::= <var> ( <var> )*
 // <var> ::= <ident> [ = <integer> ]
-// <block> ::= (Assignment)*
+// <block> ::= (<statement>)*
+// <statement> ::= <if> | <while> | <assignment>
+
+enum token_type
+{
+    Token_Identifier,
+    Token_If,
+    Token_Else,
+    Token_Endif,
+    Token_While,
+    Token_EndWhile,
+    Token_Var,
+    Token_Begin,
+    Token_End,
+    Token_Program
+};
+
+#define MaxTokenLength 32
 
 static char Look;
 static int LabelCount = 0;
 static bool SymbolTable[26] = {};
+static token_type Token;
+static char Value[MaxTokenLength];
+static char *Keywords[] = {0, "IF", "ELSE", "ENDIF", "WHILE", "ENDWHILE", "VAR", "BEGIN", "END", "PROGRAM"};
 
-#define InputStream stdin
-#define OutputStream stdout
-#define MaxTokenLength 32
+static FILE *InputStream = stdin;
+static FILE *OutputStream = stdout;
+
+static void GetName();
+static bool InSymbolTable(char);
 
 //
-// Syntax assertions
+// --Input processing
 //
 
 static void
@@ -30,28 +53,56 @@ GetChar()
 }
 
 static void
+SkipWhite()
+{
+    while((Look == ' ') || (Look == '\t'))
+    {
+        GetChar();
+    }
+}
+
+static void
+Newline()
+{
+    while(Look == '\n')
+    {
+        GetChar();
+    }
+    
+    if(Look == '\r')
+    {
+        GetChar();
+    }
+    SkipWhite();
+}
+
+static void
 Abort(char *String)
 {
-    fprintf(OutputStream, "Error: %s.\n", String);
+    fprintf(stdout, "Error: %s.\n", String);
     exit(0);
 }
 
 static void
 Expected(char *String)
 {
-    fprintf(OutputStream, "Expected: %s\n", String);
+    fprintf(stdout, "Expected: %s\n", String);
     exit(0);
 }
 
 static void
 Match(char C)
 {
+    Newline();
+    
     if(Look != C)
     {
         char ExpectedString[4] = {'\'', C, '\'', 0};
         Expected(ExpectedString);
     }
     GetChar();
+    
+    SkipWhite();
 }
 
 static void
@@ -62,7 +113,63 @@ Undefined(char Name)
 }
 
 //
-// "Is" Functions
+// --Lexer
+//
+
+static int
+Lookup(char **Table, int TableSize, char *Entry)
+{
+    int Result = 0;
+    
+    for(int TableIndex = 1;
+        TableIndex < TableSize;
+        TableIndex++)
+    {
+        if(!strcmp(Table[TableIndex], Entry))
+            {
+                Result = TableIndex;
+                break;
+        }
+    }
+    
+    return Result;
+}
+
+static void
+Scan()
+{
+    GetName();
+    Token = (token_type)Lookup(Keywords, sizeof(Keywords)/sizeof(char *), Value);
+    
+    // TODO: Update this for multiple character tokens
+    if((Value[1] == 0) && !InSymbolTable(Value[0]))
+    {
+        char Message[1024];
+        sprintf(Message, "%s is unidentified", Value);
+        Abort(Message);
+    }
+}
+
+static void
+MatchString(char *String)
+{
+    if(strcmp(String, Value))
+    {
+        Expected(String);
+    }
+}
+
+static void
+MatchToken(token_type ExpectedToken)
+{
+    if(Token != ExpectedToken)
+    {
+        Expected(Keywords[ExpectedToken]);
+    }
+}
+
+//
+// --"Is" Functions
 //
 
 static bool
@@ -79,6 +186,14 @@ static bool
 IsDigit(char C)
 {
     bool Result = ((C >= '0') && (C <= '9'));
+    
+    return Result;
+}
+
+static bool
+IsAlphaNumeric(char C)
+{
+    bool Result = (IsAlpha(C) || IsDigit(C));
     
     return Result;
 }
@@ -107,27 +222,52 @@ InSymbolTable(char Symbol)
     return Result;
 }
 
+static bool
+IsOrop(char C)
+{
+    bool Result = ((C == '|') || (C == '^'));
+    
+    return Result;
+}
+
+static bool
+IsRelop(char C)
+{
+    bool Result = ((C == '=') || (C == '#') || (C == '<') || (C == '>'));
+    
+    return Result;
+}
+
 //
-// "Get" Functions
+// --"Get" Functions
 //
 
-static char
+static void
 GetName()
 {
+    Newline();
+    
     if(!IsAlpha(Look))
     {
         Expected("Name");
     }
     
-    char Result = toupper(Look);
-    GetChar();
+    int Index = 0;
+    while(IsAlphaNumeric(Look))
+        {
+            Value[Index++] = toupper(Look);
+            GetChar();
+    }
+    Value[Index] = 0;
     
-    return Result;
+    SkipWhite();
 }
 
 static int
 GetNumber()
 {
+    Newline();
+    
     bool Negate = false;
     if(Look == '-')
     {
@@ -153,13 +293,15 @@ GetNumber()
         Result = -Result;
     }
     
+    SkipWhite();
+    
     return Result;
 }
 
 static void
 NewLabel(char *Output)
 {
-    sprintf(Output, "%d", LabelCount++);
+    sprintf(Output, "L%d", LabelCount++);
 }
 
 static void
@@ -169,7 +311,7 @@ PostLabel(char *Label)
 }
 
 //
-// Emit Functions
+// --Emit Functions
 //
 
 static void
@@ -246,7 +388,7 @@ EmitInstruction(char *Name, char Param1, char Param2)
 }
 
 //
-// Code generation
+// --Code generation
 //
 
 static void
@@ -319,24 +461,110 @@ Store(char Name)
         Undefined(Name);
     }
     
-    EmitInstruction("LEA", "ebx", Name);
-    EmitInstruction("MOV", "[ebx]", "eax");
+    EmitInstruction("MOV", Name, "eax");
+}
+
+static void
+Not()
+{
+    EmitInstruction("NOT", "eax");
+}
+
+static void
+PopAnd()
+{
+    EmitInstruction("POP", "ebx");
+    EmitInstruction("AND", "eax", "ebx");
+}
+
+static void
+PopOr()
+{
+    EmitInstruction("POP", "ebx");
+    EmitInstruction("OR", "eax", "ebx");
+}
+
+static void
+PopXor()
+{
+    EmitInstruction("POP", "ebx");
+    EmitInstruction("XOR", "eax", "ebx");
+}
+
+static void
+PopCompare()
+{
+    EmitInstruction("POP", "ebx");
+    EmitInstruction("CMP", "ebx", "eax");
+}
+
+static void
+SetEqual()
+{
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("SETE", "al");
+    EmitInstruction("IMUL", "eax", "-1");
+    EmitInstruction("CMP", "eax", "-1");
+}
+
+static void
+SetNotEqual()
+{
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("SETNE", "al");
+    EmitInstruction("IMUL", "eax", "-1");
+    EmitInstruction("CMP", "eax", "-1");
+}
+
+static void
+SetLessThan()
+{
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("SETL", "al");
+    EmitInstruction("IMUL", "eax", "-1");
+    EmitInstruction("CMP", "eax", "-1");
+}
+
+static void
+SetGreaterThan()
+{
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("SETG", "al");
+    EmitInstruction("IMUL", "eax", "-1");
+    EmitInstruction("CMP", "eax", "-1");
+}
+
+static void
+Branch(char *Label)
+{
+    EmitInstruction("JMP", Label);
+}
+
+static void
+BranchFalse(char *Label)
+{
+    EmitInstruction("JNE", Label);
 }
 
 //
-// Parsing - Expressions
+// --Parsing - Expressions
 //
 
 // NOTE: Expression grammer
-// <assignment>   :== <identifier> = <expression>
+// <assignment>   :== <identifier> = <bool-expr>
+// <bool-expr>    :== <bool-term> (<orop> <bool-term>)*
+// <bool-term>    :== <not-factor> (<andop> <not-factor>)*
+// <not-factor>   :== ['!'] <relation>
+// <relation>     :== <expression> [ <relop> <expression> ]
 // <expression>   :== <first-term> (<addop> <term>)*
 // <first-term>   :== <first-factor> <rest>
 // <term>         :== <factor> <rest>
 // <rest>         :== (<mulop> <factor>)*
 // <first factor> :== [ <adop> ] <factor>
-// <factor>       :== <var> | <number> | '(' <expression> ')'
+// <factor>       :== <var> | <number> | '(' <bool-expr> ')'
 
-static void Expression();
+static void BoolExpression();
+static void Block();
 
 static void
 Factor()
@@ -344,7 +572,7 @@ Factor()
     if(Look == '(')
     {
         Match('(');
-        Expression();
+        BoolExpression();
         Match(')');
     }
     else if(IsDigit(Look))
@@ -354,8 +582,8 @@ Factor()
     }
     else
     {
-        char Name = GetName();
-        LoadVariable(Name);
+        GetName();
+        LoadVariable(Value[0]);
     }
 }
 
@@ -412,6 +640,9 @@ Divide()
 static void
 RestOfTerms()
 {
+    SkipWhite();
+    Newline();
+    
     while(IsMulop(Look))
     {
         Push();
@@ -423,6 +654,9 @@ RestOfTerms()
         {
             Divide();
         }
+        
+        SkipWhite();
+        Newline();
     }
 }
 
@@ -461,8 +695,10 @@ Expression()
 {
     FirstTerm();
     
+    Newline();
     while(IsAddop(Look))
     {
+        Newline();
         Push();
         if(Look == '+')
         {
@@ -476,17 +712,228 @@ Expression()
 }
 
 static void
-Assignment()
+Equals()
 {
-    char Name = GetName();
     Match('=');
     Expression();
-    Store(Name);
+    PopCompare();
+    SetEqual();
+}
+
+static void
+NotEquals()
+{
+    Match('#');
+    Expression();
+    PopCompare();
+    SetNotEqual();
+}
+
+static void
+LessThan()
+{
+    Match('<');
+    Expression();
+    PopCompare();
+    SetLessThan();
+}
+
+
+static void
+GreaterThan()
+{
+    Match('>');
+    Expression();
+    PopCompare();
+    SetGreaterThan();
+}
+
+static void
+Relation()
+{
+    Expression();
+    if(IsRelop(Look))
+    {
+        Push();
+        if(Look == '=')
+        {
+            Equals();
+        }
+        else if(Look == '#')
+        {
+            NotEquals();
+        }
+        else if(Look == '<')
+        {
+            LessThan();
+        }
+        else if(Look == '>')
+        {
+            GreaterThan();
+        }
+    }
+}
+
+static void
+NotFactor()
+{
+    if(Look == '!')
+    {
+        Match('!');
+        Relation();
+        Not();
+    }
+    else
+    {
+        Relation();
+    }
+}
+
+static void
+BoolTerm()
+{
+    NotFactor();
+    
+    Newline();
+    while(Look == '&')
+    {
+        Newline();
+        Match('&');
+        Push();
+        NotFactor();
+        PopAnd();
+    }
+}
+
+static void
+BoolOr()
+{
+    Match('|');
+    BoolTerm();
+    PopOr();
+}
+
+static void
+BoolXor()
+{
+    Match('^');
+    BoolTerm();
+    PopXor();
+}
+
+static void
+BoolExpression()
+{
+    BoolTerm();
+    
+    SkipWhite();
+    Newline();
+    
+    while(IsOrop(Look))
+    {
+        Push();
+        
+        Newline();
+        if(Look == '|')
+        {
+            BoolOr();
+        }
+        else if(Look == '^')
+        {
+            BoolXor();
+        }
+        
+        SkipWhite();
+        Newline();
+    }
 }
 
 //
-// Parsing - Program Structure
+// --Parsing - Control Structures
 //
+
+// <if>     :== IF <bool-expression> <block> [ ELSE <block> ] ENDIF
+// <while>  :== WHILE <bool-expression> <block> ENDWHILE
+
+static void
+If()
+{
+    BoolExpression();
+    
+    char FalseLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    NewLabel(FalseLabel);
+    strncpy(DoneLabel, FalseLabel, MaxTokenLength);
+    
+    BranchFalse(FalseLabel);
+    Block();
+    
+    Newline();
+    if(Token == Token_Else)
+    {
+        Match('l');
+        NewLabel(FalseLabel);
+        PostLabel(FalseLabel);
+        Block();
+    }
+    
+    PostLabel(DoneLabel);
+    MatchToken(Token_Endif);
+}
+
+static void
+While()
+{
+    char ConditionLabel[MaxTokenLength];
+    char DoneLabel[MaxTokenLength];
+    NewLabel(ConditionLabel);
+    NewLabel(DoneLabel);
+    
+    PostLabel(ConditionLabel);
+    BoolExpression();
+    BranchFalse(DoneLabel);
+    Block();
+    MatchToken(Token_EndWhile);
+    Branch(ConditionLabel);
+    
+    PostLabel(DoneLabel);
+}
+
+//
+// --Parsing - Program Structure
+//
+
+static void
+Assignment()
+{
+    char Variable = Value[0];
+    Match('=');
+    BoolExpression();
+    Store(Variable);
+}
+
+static void
+Block()
+{
+    Scan();
+    while((Token != Token_EndWhile) && (Token != Token_Else) && (Token != Token_End))
+    {
+        if(Token == Token_If)
+        {
+            If();
+        }
+        else if(Token == Token_While)
+        {
+            While();
+        }
+        else
+        {
+            Assignment();
+        }
+        
+        Scan();
+    }
+}
 
 static void
 Header()
@@ -501,27 +948,19 @@ Header()
     EmitNoTab("includelib C:\\masm32\\lib\\msvcrt.lib");
     EmitNoTab(".data");
     EmitNoTab("IntegerFormat db \"%d\", 13, 10, 0");
-    EmitNoTab(".code");
 }
 
-static void
-Block()
-{
-    while(Look != 'e')
-    {
-        Assignment();
-    }
-}
 
 static void
 Main()
 {
-    Match('b');
+    MatchToken(Token_Begin);
+    EmitNoTab(".code");
     PostLabel("MAIN");
     
     Block();
     
-    Match('e');
+    MatchToken(Token_End);
     EmitLn("call ExitProcess");
     EmitNoTab("end MAIN");
 }
@@ -551,24 +990,29 @@ Alloc(char Name)
 static void
 Decl()
 {
-    Match('v');
-    char Name = GetName();
-    Alloc(Name);
+    GetName();
+    Alloc(Value[0]);
     
+    SkipWhite();
+    Newline();
     while(Look == ',')
     {
         Match(',');
-        char Name = GetName();
-        Alloc(Name);
+        GetName();
+        Alloc(Value[0]);
+        
+        SkipWhite();
+        Newline();
     }
 }
 
 static void
 TopDecls()
 {
-    while(Look != 'b')
+    Scan();
+    while(Token != Token_Begin)
     {
-        if(Look == 'v')
+        if(Token == Token_Var)
         {
             Decl();
         }
@@ -578,31 +1022,42 @@ TopDecls()
             sprintf(Message, "Unrecognized Keyword \'%c\'", Look);
             Abort(Message);
         }
+        
+        Scan();
     }
     }
 
 static void
 Program()
 {
-    Match('p');
+    MatchToken(Token_Program);
     Header();
     TopDecls();
     Main();
-    Match('.');
+    MatchToken(Token_End);
 }
 
 static void
 Init()
 {
+    char OutputFileName[1024];
+    sprintf(OutputFileName, "test1.asm");
+    //OutputStream = fopen(OutputFileName, "w");
     GetChar();
+    Scan();
 }
 
 int main()
 {
     Init();
     Program();
-    if(Look != '\n')
+    
+    if(InputStream != stdin)
+        {
+            fclose(InputStream);
+    }
+    if(OutputStream != stdout)
     {
-        Abort("Unexpected data after \'.\'");
+        fclose(OutputStream);
     }
 }
