@@ -169,7 +169,6 @@ EmitInstruction(char *Name, char Param1, char *Param2)
     EmitLn(Line);
 }
 
-
 static void
 EmitInstruction(char *Name, char Param1, char Param2)
 {
@@ -177,7 +176,6 @@ EmitInstruction(char *Name, char Param1, char Param2)
     sprintf(Line, "%s %c, %c", Name, Param1, Param2);
     EmitLn(Line);
 }
-
 
 static void
 NewLabel(char *Label)
