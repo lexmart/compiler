@@ -13,6 +13,9 @@
 // <block> ::= (<statement>)*
 // <statement> ::= <if> | <while> | <assignment>
 
+#define Assert(Expression) if(!(Expression)) { *((int *)0) = 0; }
+#define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
+
 enum token_type
 {
     Token_Identifier,
@@ -24,23 +27,26 @@ enum token_type
     Token_Var,
     Token_Begin,
     Token_End,
-    Token_Program
+    Token_Program,
+    Token_Read,
+    Token_Write
 };
 
 #define MaxTokenLength 32
 
 static char Look;
 static int LabelCount = 0;
-static bool SymbolTable[26] = {};
+static int NumSymbols = 1;
+static char *SymbolTable[4096] = {};
 static token_type Token;
 static char Value[MaxTokenLength];
-static char *Keywords[] = {0, "IF", "ELSE", "ENDIF", "WHILE", "ENDWHILE", "VAR", "BEGIN", "END", "PROGRAM"};
+static char *Keywords[] = {0, "IF", "ELSE", "ENDIF", "WHILE", "ENDWHILE", "VAR", "BEGIN", "END", "PROGRAM", "READ", "WRITE"};
 
 static FILE *InputStream = stdin;
 static FILE *OutputStream = stdout;
 
 static void GetName();
-static bool InSymbolTable(char);
+static bool InSymbolTable(char *);
 
 //
 // --Input processing
@@ -106,9 +112,9 @@ Match(char C)
 }
 
 static void
-Undefined(char Name)
+Undefined(char *Name)
 {
-    printf("Undefined Identifier \'%c\'\n", Name);
+    printf("Undefined Identifier \'%s\'\n", Name);
     exit(0);
 }
 
@@ -141,8 +147,7 @@ Scan()
     GetName();
     Token = (token_type)Lookup(Keywords, sizeof(Keywords)/sizeof(char *), Value);
     
-    // TODO: Update this for multiple character tokens
-    if((Value[1] == 0) && !InSymbolTable(Value[0]))
+    if((Token == Token_Identifier) && !InSymbolTable(Value))
     {
         char Message[1024];
         sprintf(Message, "%s is unidentified", Value);
@@ -215,9 +220,9 @@ IsAddop(char C)
 }
 
 static bool
-InSymbolTable(char Symbol)
+InSymbolTable(char *Symbol)
 {
-    bool Result = SymbolTable[Symbol - 'A'];
+    bool Result = (Lookup(SymbolTable, NumSymbols, Symbol) > 0);
     
     return Result;
 }
@@ -412,7 +417,7 @@ LoadConstant(int Constant)
 }
 
 static void
-LoadVariable(char Name)
+LoadVariable(char *Name)
 {
     EmitInstruction("MOV", "eax", Name);
 }
@@ -454,7 +459,7 @@ PopDiv()
 }
 
 static void
-Store(char Name)
+Store(char *Name)
 {
     if(!InSymbolTable(Name))
     {
@@ -535,6 +540,24 @@ SetGreaterThan()
 }
 
 static void
+SetLessThanOrEqual()
+{
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("SETLE", "al");
+    EmitInstruction("IMUL", "eax", "-1");
+    EmitInstruction("CMP", "eax", "-1");
+}
+
+static void
+SetGreaterThanOrEqual()
+{
+    EmitInstruction("MOV", "eax", "0");
+    EmitInstruction("SETGE", "al");
+    EmitInstruction("IMUL", "eax", "-1");
+    EmitInstruction("CMP", "eax", "-1");
+}
+
+static void
 Branch(char *Label)
 {
     EmitInstruction("JMP", Label);
@@ -545,6 +568,28 @@ BranchFalse(char *Label)
 {
     EmitInstruction("JNE", Label);
 }
+
+static void
+EmitRead()
+{
+    EmitInstruction("LEA", "eax", Value);
+    EmitInstruction("PUSH", "eax");
+    EmitInstruction("LEA", "eax", "ReadFormat");
+    EmitInstruction("PUSH", "eax");
+    EmitInstruction("CALL", "_imp__scanf");
+    EmitInstruction("ADD", "ESP", "8");
+}
+
+static void
+EmitWrite()
+{
+    EmitInstruction("PUSH", Value);
+    EmitInstruction("LEA", "eax", "PrintFormat");
+    EmitInstruction("PUSH", "eax");
+    EmitInstruction("CALL", "_imp__printf");
+    EmitInstruction("ADD", "ESP", "8");
+}
+
 
 //
 // --Parsing - Expressions
@@ -583,7 +628,7 @@ Factor()
     else
     {
         GetName();
-        LoadVariable(Value[0]);
+        LoadVariable(Value);
     }
 }
 
@@ -723,19 +768,48 @@ Equals()
 static void
 NotEquals()
 {
-    Match('#');
+    Match('>');
     Expression();
     PopCompare();
     SetNotEqual();
 }
 
 static void
+LessThanOrEqual()
+{
+    Match('=');
+    Expression();
+    PopCompare();
+    SetLessThanOrEqual();
+}
+
+static void
+GreaterThanOrEqual()
+{
+    Match('=');
+    Expression();
+    PopCompare();
+    SetGreaterThanOrEqual();
+}
+
+static void
 LessThan()
 {
     Match('<');
-    Expression();
-    PopCompare();
-    SetLessThan();
+    if(Look == '=')
+    {
+        LessThanOrEqual();
+    }
+    else if(Look == '>')
+    {
+        NotEquals();
+    }
+    else
+    {
+        Expression();
+        PopCompare();
+        SetLessThan();
+    }
 }
 
 
@@ -743,9 +817,16 @@ static void
 GreaterThan()
 {
     Match('>');
-    Expression();
-    PopCompare();
-    SetGreaterThan();
+    if(Look == '=')
+    {
+        GreaterThanOrEqual();
+    }
+    else
+    {
+        Expression();
+        PopCompare();
+        SetGreaterThan();
+    }
 }
 
 static void
@@ -904,9 +985,26 @@ While()
 //
 
 static void
+Read()
+{
+    GetName();
+    EmitRead();
+}
+
+static void
+Write()
+{
+    GetName();
+    EmitWrite();
+}
+
+static void
 Assignment()
 {
-    char Variable = Value[0];
+    int SymbolIndex = Lookup(SymbolTable, NumSymbols, Value);
+    Assert(SymbolIndex != 0);
+    
+    char *Variable = SymbolTable[SymbolIndex];
     Match('=');
     BoolExpression();
     Store(Variable);
@@ -925,6 +1023,14 @@ Block()
         else if(Token == Token_While)
         {
             While();
+        }
+        else if(Token == Token_Read)
+        {
+            Read();
+        }
+        else if(Token == Token_Write)
+        {
+            Write();
         }
         else
         {
@@ -947,7 +1053,8 @@ Header()
     EmitNoTab("include C:\\masm32\\include\\msvcrt.inc");
     EmitNoTab("includelib C:\\masm32\\lib\\msvcrt.lib");
     EmitNoTab(".data");
-    EmitNoTab("IntegerFormat db \"%d\", 13, 10, 0");
+    EmitNoTab("PrintFormat db \"%d\", 13, 10, 0");
+    EmitNoTab("ReadFormat db \"%d\", 0");
 }
 
 
@@ -966,15 +1073,26 @@ Main()
 }
 
 static void
-Alloc(char Name)
+AddEntry(char *Name)
+{
+    char *Symbol = (char *)malloc(strlen(Name) + 1);
+    memcpy(Symbol, Name, strlen(Name) + 1);
+    
+    Assert(NumSymbols < sizeof(SymbolTable)/sizeof(char *));
+    SymbolTable[NumSymbols++] = Symbol;
+}
+
+static void
+Alloc(char *Name)
 {
     if(InSymbolTable(Name))
     {
         Abort("Duplicate variable name");
     }
-    SymbolTable[Name - 'A'] = true;
     
-    fprintf(OutputStream, "%c DWORD ", Name);
+    AddEntry(Name);
+    
+    fprintf(OutputStream, "%s DWORD ", Name);
     if(Look == '=')
     {
         Match('=');
@@ -991,7 +1109,7 @@ static void
 Decl()
 {
     GetName();
-    Alloc(Value[0]);
+    Alloc(Value);
     
     SkipWhite();
     Newline();
@@ -999,7 +1117,7 @@ Decl()
     {
         Match(',');
         GetName();
-        Alloc(Value[0]);
+        Alloc(Value);
         
         SkipWhite();
         Newline();
@@ -1042,12 +1160,13 @@ Init()
 {
     char OutputFileName[1024];
     sprintf(OutputFileName, "test1.asm");
-    //OutputStream = fopen(OutputFileName, "w");
+    OutputStream = fopen(OutputFileName, "w");
     GetChar();
     Scan();
 }
 
-int main()
+int
+main()
 {
     Init();
     Program();

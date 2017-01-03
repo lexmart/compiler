@@ -1,0 +1,11 @@
+PROGRAM
+VAR fib1 = 0, fib2 = 1
+VAR temp
+BEGIN
+WHILE fib2 < 1000
+WRITE fib2
+temp = fib2
+fib2 = fib2 + fib1
+fib1 = temp
+ENDWHILE
+END
