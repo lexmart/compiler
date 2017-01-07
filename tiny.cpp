@@ -29,7 +29,9 @@ enum token_type
     Token_End,
     Token_Program,
     Token_Read,
-    Token_Write
+    Token_Write,
+    Token_Number,
+    Token_Operator
 };
 
 #define MaxTokenLength 32
@@ -47,6 +49,8 @@ static FILE *OutputStream = stdout;
 
 static void GetName();
 static bool InSymbolTable(char *);
+static bool IsWhite(char);
+static void Next();
 
 //
 // --Input processing
@@ -61,25 +65,10 @@ GetChar()
 static void
 SkipWhite()
 {
-    while((Look == ' ') || (Look == '\t'))
+    while(IsWhite(Look))
     {
         GetChar();
     }
-}
-
-static void
-Newline()
-{
-    while(Look == '\n')
-    {
-        GetChar();
-    }
-    
-    if(Look == '\r')
-    {
-        GetChar();
-    }
-    SkipWhite();
 }
 
 static void
@@ -92,23 +81,19 @@ Abort(char *String)
 static void
 Expected(char *String)
 {
-    fprintf(stdout, "Expected: %s\n", String);
+    fprintf(stdout, "Expected: %s, Got: %s\n", String, Value);
     exit(0);
 }
 
 static void
 Match(char C)
 {
-    Newline();
-    
-    if(Look != C)
+    if(Value[0] != C)
     {
         char ExpectedString[4] = {'\'', C, '\'', 0};
         Expected(ExpectedString);
     }
-    GetChar();
-    
-    SkipWhite();
+    Next();
 }
 
 static void
@@ -117,10 +102,6 @@ Undefined(char *Name)
     printf("Undefined Identifier \'%s\'\n", Name);
     exit(0);
 }
-
-//
-// --Lexer
-//
 
 static int
 Lookup(char **Table, int TableSize, char *Entry)
@@ -142,26 +123,14 @@ Lookup(char **Table, int TableSize, char *Entry)
 }
 
 static void
-Scan()
-{
-    GetName();
-    Token = (token_type)Lookup(Keywords, sizeof(Keywords)/sizeof(char *), Value);
-    
-    if((Token == Token_Identifier) && !InSymbolTable(Value))
-    {
-        char Message[1024];
-        sprintf(Message, "%s is unidentified", Value);
-        Abort(Message);
-    }
-}
-
-static void
 MatchString(char *String)
 {
-    if(strcmp(String, Value))
+    if(strcmp(String, Value) != 0)
     {
         Expected(String);
     }
+    
+    Next();
 }
 
 static void
@@ -171,11 +140,21 @@ MatchToken(token_type ExpectedToken)
     {
         Expected(Keywords[ExpectedToken]);
     }
+    
+    Next();
 }
 
 //
 // --"Is" Functions
 //
+
+static bool
+IsWhite(char C)
+{
+    bool Result = ((C == ' ') || (C == '\t') || (C == '\n') || (C == '\r'));
+    
+    return Result;
+}
 
 static bool
 IsAlpha(char C)
@@ -250,11 +229,11 @@ IsRelop(char C)
 static void
 GetName()
 {
-    Newline();
+    SkipWhite();
     
     if(!IsAlpha(Look))
     {
-        Expected("Name");
+        Expected("Identifier");
     }
     
     int Index = 0;
@@ -265,42 +244,69 @@ GetName()
     }
     Value[Index] = 0;
     
-    SkipWhite();
+    Token = Token_Identifier;
 }
 
-static int
+static void
 GetNumber()
 {
-    Newline();
-    
-    bool Negate = false;
-    if(Look == '-')
-    {
-        Negate = true;
-        Match('-');
-    }
+    SkipWhite();
     
     if(!IsDigit(Look))
     {
-        Expected("Integer");
+        Expected("Number");
     }
     
-    int Result = 0;
+    int Index = 0;
     while(IsDigit(Look))
     {
-        int Digit = Look - '0';
-        Result = 10*Result + Digit;
+        Value[Index++] = Look;
         GetChar();
     }
+    Value[Index] = 0;
     
-    if(Negate)
-    {
-        Result = -Result;
-    }
-    
+    Token = Token_Number;
+}
+
+static void
+GetOp()
+{
     SkipWhite();
     
-    return Result;
+    Token = Token_Operator;
+    Value[0] = Look;
+    Value[1] = 0;
+    
+    GetChar();
+}
+
+static void
+Scan()
+{
+    if(Token == Token_Identifier)
+    {
+        Token = (token_type)Lookup(Keywords, sizeof(Keywords)/sizeof(char *), Value);
+    }
+}
+
+static void
+Next()
+{
+    SkipWhite();
+    if(IsAlpha(Look))
+    {
+        GetName();
+    }
+    else if(IsDigit(Look))
+    {
+        GetNumber();
+    }
+    else
+    {
+        GetOp();
+    }
+    
+    Scan();
 }
 
 static void
@@ -409,10 +415,17 @@ Negate()
 }
 
 static void
-LoadConstant(int Constant)
+LoadConstant(bool Negative)
 {
     char Line[1024];
-    sprintf(Line, "MOV eax, %d", Constant);
+    if(!Negative)
+    {
+    sprintf(Line, "MOV eax, %s", Value);
+    }
+    else
+    {
+        sprintf(Line, "MOV eax, -%s", Value);
+    }
     EmitLn(Line);
 }
 
@@ -614,32 +627,39 @@ static void Block();
 static void
 Factor()
 {
-    if(Look == '(')
+    if(!strcmp(Value, "("))
     {
-        Match('(');
+        MatchString("(");
         BoolExpression();
-        Match(')');
-    }
-    else if(IsDigit(Look))
-    {
-         int Number = GetNumber();
-        LoadConstant(Number);
+        MatchString(")");
     }
     else
     {
-        GetName();
+        if(Token == Token_Number)
+    {
+        LoadConstant(false);
+    }
+    else if(Token == Token_Identifier)
+    {
         LoadVariable(Value);
     }
+    else
+    {
+        Expected("Math factor");
+    }
+    
+    Next();
+}
 }
 
 static void
 NegativeFactor()
 {
-    Match('-');
-    if(IsDigit(Look))
+    MatchString("-");
+    if(IsDigit(Value[0]))
     {
-        int Number = GetNumber();
-        LoadConstant(-Number);
+        GetNumber();
+        LoadConstant(true);
     }
     else
     {
@@ -651,12 +671,12 @@ NegativeFactor()
 static void
 FirstFactor()
 {
-    if(Look == '+')
+    if(!strcmp(Value, "+"))
     {
-        Match('+');
+        MatchString("+");
         Factor();
     }
-    else if(Look == '-')
+    else if(!strcmp(Value, "-"))
     {
         NegativeFactor();
     }
@@ -669,7 +689,7 @@ FirstFactor()
 static void
 Multiply()
 {
-    Match('*');
+    MatchString("*");
     Factor();
     PopMul();
 }
@@ -677,7 +697,7 @@ Multiply()
 static void
 Divide()
 {
-    Match('/');
+    MatchString("/");
     Factor();
     PopDiv();
 }
@@ -685,23 +705,17 @@ Divide()
 static void
 RestOfTerms()
 {
-    SkipWhite();
-    Newline();
-    
-    while(IsMulop(Look))
+    while(IsMulop(Value[0]))
     {
         Push();
-        if(Look == '*')
+        if(!strcmp(Value, "*"))
         {
             Multiply();
         }
-        else if(Look == '/')
+        else if(!strcmp(Value, "/"))
         {
             Divide();
         }
-        
-        SkipWhite();
-        Newline();
     }
 }
 
@@ -722,7 +736,7 @@ FirstTerm()
 static void
 Add()
 {
-    Match('+');
+    MatchString("+");
     Term();
     PopAdd();
 }
@@ -730,7 +744,7 @@ Add()
 static void
 Subtract()
 {
-    Match('-');
+    MatchString("-");
     Term();
     PopSub();
 }
@@ -740,16 +754,14 @@ Expression()
 {
     FirstTerm();
     
-    Newline();
-    while(IsAddop(Look))
+    while(IsAddop(Value[0]))
     {
-        Newline();
         Push();
-        if(Look == '+')
+        if(!strcmp(Value, "+"))
         {
             Add();
         }
-        else if(Look == '-')
+        else if(!strcmp(Value, "-"))
         {
             Subtract();
         }
@@ -759,7 +771,7 @@ Expression()
 static void
 Equals()
 {
-    Match('=');
+    Next();
     Expression();
     PopCompare();
     SetEqual();
@@ -768,7 +780,7 @@ Equals()
 static void
 NotEquals()
 {
-    Match('>');
+    Next();
     Expression();
     PopCompare();
     SetNotEqual();
@@ -777,7 +789,7 @@ NotEquals()
 static void
 LessThanOrEqual()
 {
-    Match('=');
+    Next();
     Expression();
     PopCompare();
     SetLessThanOrEqual();
@@ -786,7 +798,7 @@ LessThanOrEqual()
 static void
 GreaterThanOrEqual()
 {
-    Match('=');
+    Next();
     Expression();
     PopCompare();
     SetGreaterThanOrEqual();
@@ -795,12 +807,12 @@ GreaterThanOrEqual()
 static void
 LessThan()
 {
-    Match('<');
-    if(Look == '=')
+    Next();
+    if(!strcmp(Value, "="))
     {
         LessThanOrEqual();
     }
-    else if(Look == '>')
+    else if(!strcmp(Value, ">"))
     {
         NotEquals();
     }
@@ -816,8 +828,8 @@ LessThan()
 static void
 GreaterThan()
 {
-    Match('>');
-    if(Look == '=')
+    Next();
+    if(!strcmp(Value, "="))
     {
         GreaterThanOrEqual();
     }
@@ -833,22 +845,18 @@ static void
 Relation()
 {
     Expression();
-    if(IsRelop(Look))
+    if(IsRelop(Value[0]))
     {
         Push();
-        if(Look == '=')
+        if(!strcmp(Value, "="))
         {
             Equals();
         }
-        else if(Look == '#')
-        {
-            NotEquals();
-        }
-        else if(Look == '<')
+        else if(!strcmp(Value, "<"))
         {
             LessThan();
         }
-        else if(Look == '>')
+        else if(!strcmp(Value, ">"))
         {
             GreaterThan();
         }
@@ -858,9 +866,9 @@ Relation()
 static void
 NotFactor()
 {
-    if(Look == '!')
+    if(!strcmp(Value, "!"))
     {
-        Match('!');
+        MatchString("!");
         Relation();
         Not();
     }
@@ -875,11 +883,9 @@ BoolTerm()
 {
     NotFactor();
     
-    Newline();
-    while(Look == '&')
+    while(!strcmp(Value, "&"))
     {
-        Newline();
-        Match('&');
+        MatchString("&");
         Push();
         NotFactor();
         PopAnd();
@@ -889,7 +895,7 @@ BoolTerm()
 static void
 BoolOr()
 {
-    Match('|');
+    MatchString("|");
     BoolTerm();
     PopOr();
 }
@@ -897,7 +903,7 @@ BoolOr()
 static void
 BoolXor()
 {
-    Match('^');
+    MatchString("^");
     BoolTerm();
     PopXor();
 }
@@ -907,25 +913,18 @@ BoolExpression()
 {
     BoolTerm();
     
-    SkipWhite();
-    Newline();
-    
-    while(IsOrop(Look))
+    while(IsOrop(Value[0]))
     {
         Push();
         
-        Newline();
-        if(Look == '|')
+        if(!strcmp(Value, "|"))
         {
             BoolOr();
         }
-        else if(Look == '^')
+        else if(!strcmp(Value, "^"))
         {
             BoolXor();
         }
-        
-        SkipWhite();
-        Newline();
     }
 }
 
@@ -949,10 +948,9 @@ If()
     BranchFalse(FalseLabel);
     Block();
     
-    Newline();
     if(Token == Token_Else)
     {
-        Match('l');
+        MatchString("l");
         NewLabel(FalseLabel);
         PostLabel(FalseLabel);
         Block();
@@ -965,6 +963,7 @@ If()
 static void
 While()
 {
+    Next();
     char ConditionLabel[MaxTokenLength];
     char DoneLabel[MaxTokenLength];
     NewLabel(ConditionLabel);
@@ -989,6 +988,7 @@ Read()
 {
     GetName();
     EmitRead();
+    Next();
 }
 
 static void
@@ -996,6 +996,7 @@ Write()
 {
     GetName();
     EmitWrite();
+    Next();
 }
 
 static void
@@ -1003,9 +1004,10 @@ Assignment()
 {
     int SymbolIndex = Lookup(SymbolTable, NumSymbols, Value);
     Assert(SymbolIndex != 0);
-    
     char *Variable = SymbolTable[SymbolIndex];
-    Match('=');
+    
+    Next();
+    MatchString("=");
     BoolExpression();
     Store(Variable);
 }
@@ -1013,7 +1015,6 @@ Assignment()
 static void
 Block()
 {
-    Scan();
     while((Token != Token_EndWhile) && (Token != Token_Else) && (Token != Token_End))
     {
         if(Token == Token_If)
@@ -1036,8 +1037,6 @@ Block()
         {
             Assignment();
         }
-        
-        Scan();
     }
 }
 
@@ -1093,11 +1092,13 @@ Alloc(char *Name)
     AddEntry(Name);
     
     fprintf(OutputStream, "%s DWORD ", Name);
-    if(Look == '=')
+    
+    Next();
+    if(!strcmp(Value, "="))
     {
-        Match('=');
-         int Num = GetNumber();
-        fprintf(OutputStream, "%d\n", Num);
+         GetNumber();
+        fprintf(OutputStream, "%s\n", Value);
+        Next();
     }
     else
     {
@@ -1111,23 +1112,16 @@ Decl()
     GetName();
     Alloc(Value);
     
-    SkipWhite();
-    Newline();
-    while(Look == ',')
+    while(!strcmp(Value, ","))
     {
-        Match(',');
         GetName();
         Alloc(Value);
-        
-        SkipWhite();
-        Newline();
     }
 }
 
 static void
 TopDecls()
 {
-    Scan();
     while(Token != Token_Begin)
     {
         if(Token == Token_Var)
@@ -1137,11 +1131,9 @@ TopDecls()
         else
         {
             char Message[1024];
-            sprintf(Message, "Unrecognized Keyword \'%c\'", Look);
+            sprintf(Message, "Unrecognized Keyword \'%s\"", Value);
             Abort(Message);
         }
-        
-        Scan();
     }
     }
 
@@ -1152,7 +1144,6 @@ Program()
     Header();
     TopDecls();
     Main();
-    MatchToken(Token_End);
 }
 
 static void
@@ -1161,8 +1152,9 @@ Init()
     char OutputFileName[1024];
     sprintf(OutputFileName, "test1.asm");
     OutputStream = fopen(OutputFileName, "w");
+    
     GetChar();
-    Scan();
+    Next();
 }
 
 int
