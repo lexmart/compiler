@@ -30,6 +30,9 @@ enum token_type
     Token_Program,
     Token_Read,
     Token_Write,
+    
+    // NOTE: Not mapped to a keyword...
+    
     Token_Number,
     Token_Operator
 };
@@ -278,6 +281,15 @@ GetOp()
     Value[1] = 0;
     
     GetChar();
+}
+
+static void
+Semicolon()
+{
+    if(!strcmp(Value, ";"))
+        {
+            Next();
+        }
 }
 
 static void
@@ -1033,10 +1045,12 @@ Block()
         {
             Write();
         }
-        else
+        else if(Token == Token_Identifier)
         {
             Assignment();
         }
+        
+        Semicolon();
     }
 }
 
@@ -1081,7 +1095,7 @@ AddEntry(char *Name)
     SymbolTable[NumSymbols++] = Symbol;
 }
 
-static void
+ static void
 Alloc(char *Name)
 {
     if(InSymbolTable(Name))
@@ -1117,6 +1131,8 @@ Decl()
         GetName();
         Alloc(Value);
     }
+    
+    Semicolon();
 }
 
 static void
@@ -1131,7 +1147,7 @@ TopDecls()
         else
         {
             char Message[1024];
-            sprintf(Message, "Unrecognized Keyword \'%s\"", Value);
+            sprintf(Message, "Unrecognized Keyword \'%s\'", Value);
             Abort(Message);
         }
     }
@@ -1141,6 +1157,7 @@ static void
 Program()
 {
     MatchToken(Token_Program);
+    Semicolon();
     Header();
     TopDecls();
     Main();

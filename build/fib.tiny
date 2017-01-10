@@ -1,39 +1,36 @@
 program
-
+;
 var fib1 = 1, fib2 = 1
-
-var temp
-
+;
+var temp;
 begin
 
 
 while fib2 <> 432
 
 	temp = fib2
-
-	fib2 = fib2 + fib1 
-
+;
+	fib2 = fib2 + fib1;
 	fib1 = temp
 
-
+;
 while fib2 >= 1000
 	
 	fib2 = fib2 - 1000
-
+;
 endwhile
 
-
+;
 
 while fib1 >= 1000
-	
 	fib1 = fib1 - 1000
-
+;
 endwhile
 
-
+;
 
 write fib2
 
-
-endwhile
-end
+;
+endwhile;
+end;
