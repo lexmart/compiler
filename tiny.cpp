@@ -66,11 +66,32 @@ GetChar()
 }
 
 static void
+SkipComment()
+{
+    while(Look != '}')
+    {
+        GetChar();
+        if(Look == '{')
+        {
+            SkipComment();
+        }
+    }
+    GetChar();
+}
+
+static void
 SkipWhite()
 {
     while(IsWhite(Look))
     {
-        GetChar();
+        if(Look == '{')
+        {
+            SkipComment();
+        }
+        else
+        {
+            GetChar();
+        }
     }
 }
 
@@ -154,7 +175,7 @@ MatchToken(token_type ExpectedToken)
 static bool
 IsWhite(char C)
 {
-    bool Result = ((C == ' ') || (C == '\t') || (C == '\n') || (C == '\r'));
+    bool Result = ((C == ' ') || (C == '\t') || (C == '\n') || (C == '\r') || (C == '{'));
     
     return Result;
 }
@@ -1048,6 +1069,12 @@ Block()
         else if(Token == Token_Identifier)
         {
             Assignment();
+        }
+        else
+        {
+            char Message[1024];
+            sprintf(Message, "Unexpected \'%s\'", Value);
+            Abort(Message);
         }
         
         Semicolon();
