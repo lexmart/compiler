@@ -1,1 +1,0 @@
-pxbX=4;X=1;Y=1;wX<5bwY<5bZ=X*Y;Y=Y+1;p(Z)e;X=X+1;Y=1ee.

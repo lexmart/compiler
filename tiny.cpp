@@ -4,6 +4,7 @@
 #include <string.h>
 
 // TINY Language definition:
+
 // <program> ::= PROGRAM <top-level decls> <main> '.'
 // <main> ::= BEGIN <block> END
 // <top-level decls> ::= ( <data declaration> )*
@@ -12,6 +13,21 @@
 // <var> ::= <ident> [ = <integer> ]
 // <block> ::= (<statement>)*
 // <statement> ::= <if> | <while> | <assignment>
+
+// <assignment>   :== <identifier> = <bool-expr>
+// <bool-expr>    :== <bool-term> (<orop> <bool-term>)*
+// <bool-term>    :== <not-factor> (<andop> <not-factor>)*
+// <not-factor>   :== ['!'] <relation>
+// <relation>     :== <expression> [ <relop> <expression> ]
+// <expression>   :== <first-term> (<addop> <term>)*
+// <first-term>   :== <first-factor> <rest>
+// <term>         :== <factor> <rest>
+// <rest>         :== (<mulop> <factor>)*
+// <first factor> :== [ <adop> ] <factor>
+// <factor>       :== <var> | <number> | '(' <bool-expr> ')'
+
+// <if>     :== IF <bool-expression> <block> [ ELSE <block> ] ENDIF
+// <while>  :== WHILE <bool-expression> <block> ENDWHILE
 
 #define Assert(Expression) if(!(Expression)) { *((int *)0) = 0; }
 #define ArrayCount(Array) (sizeof(Array)/sizeof(Array[0]))
@@ -137,9 +153,9 @@ Lookup(char **Table, int TableSize, char *Entry)
         TableIndex++)
     {
         if(!strcmp(Table[TableIndex], Entry))
-            {
-                Result = TableIndex;
-                break;
+        {
+            Result = TableIndex;
+            break;
         }
     }
     
@@ -262,9 +278,9 @@ GetName()
     
     int Index = 0;
     while(IsAlphaNumeric(Look))
-        {
-            Value[Index++] = toupper(Look);
-            GetChar();
+    {
+        Value[Index++] = toupper(Look);
+        GetChar();
     }
     Value[Index] = 0;
     
@@ -308,9 +324,9 @@ static void
 Semicolon()
 {
     if(!strcmp(Value, ";"))
-        {
-            Next();
-        }
+    {
+        Next();
+    }
 }
 
 static void
@@ -453,7 +469,7 @@ LoadConstant(bool Negative)
     char Line[1024];
     if(!Negative)
     {
-    sprintf(Line, "MOV eax, %s", Value);
+        sprintf(Line, "MOV eax, %s", Value);
     }
     else
     {
@@ -669,20 +685,20 @@ Factor()
     else
     {
         if(Token == Token_Number)
-    {
-        LoadConstant(false);
+        {
+            LoadConstant(false);
+        }
+        else if(Token == Token_Identifier)
+        {
+            LoadVariable(Value);
+        }
+        else
+        {
+            Expected("Math factor");
+        }
+        
+        Next();
     }
-    else if(Token == Token_Identifier)
-    {
-        LoadVariable(Value);
-    }
-    else
-    {
-        Expected("Math factor");
-    }
-    
-    Next();
-}
 }
 
 static void
@@ -1122,7 +1138,7 @@ AddEntry(char *Name)
     SymbolTable[NumSymbols++] = Symbol;
 }
 
- static void
+static void
 Alloc(char *Name)
 {
     if(InSymbolTable(Name))
@@ -1137,7 +1153,7 @@ Alloc(char *Name)
     Next();
     if(!strcmp(Value, "="))
     {
-         GetNumber();
+        GetNumber();
         fprintf(OutputStream, "%s\n", Value);
         Next();
     }
@@ -1178,7 +1194,7 @@ TopDecls()
             Abort(Message);
         }
     }
-    }
+}
 
 static void
 Program()
@@ -1208,8 +1224,8 @@ main()
     Program();
     
     if(InputStream != stdin)
-        {
-            fclose(InputStream);
+    {
+        fclose(InputStream);
     }
     if(OutputStream != stdout)
     {
